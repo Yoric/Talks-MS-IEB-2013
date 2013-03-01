@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+
+<html lang="en-US">
+<head>
+  <title>Concurrency for JavaScript</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1274, user-scalable=no">
+  <link rel="stylesheet" href="themes/mozilla/styles/style.css">
+</head>
+
+<body class="list">
+  <header class="caption">
+    <h1>Concurrency for JavaScript</h1>
+
+    <p class="footer">David Rajchenbach-Teller, <a href=
+    "http://twitter.com/">@ImYoric</a> or <a href=
+    "mailto:yoric@mozilla.com">yoric@mozilla.com</a></p>
+  </header>
+
+  <div id="empowering" class="slide loud">
+    <div>
+      <section>
+        <div class="titles">
+          <div class="title_stage">Concurrency // JavaScript</div>
+          <div class="title_name">A Survey</div>
+          <div style="margin-top:10%;font-size:18pt">
+            <a href="https://github.com/Yoric/Talks-MS-IEB-2013">
+              https://github.com/Yoric/Talks-MS-IEB-2013
+            </a>
+          </div>
+        </div>
+
+        <footer class="byline">
+          David Rajchenbach-Teller, Microsoft IEB, Paris, January 2013
+        </footer>
+      </section>
+    </div>
+  </div>
+
+ <div id="introduction" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Today's program</h2>
+        </header>
+        <div class="sum middle">
+          <div class="line">
+            <span class="operator"></span>
+            <span class="operand"><a href="section_model">The
+    JavaScript execution model</a></span>
+          </div>
+          <div class="line">
+            <span class="operator">+</span>
+            <span class="operand"><a href="section_encoding">Encoding concurrency</a></span>
+          </div>
+          <div class="line">
+            <span class="operator">+</span>
+            <span class="operand"><a href="section_workers">Threads
+    in JavaScript</a></span>
+          </div>
+          <div class="line">
+            <span class="operator">+</span>
+            <span class="operand"><a href="section_future">Proposed extensions</a></span>
+          </div>
+       </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_model" class="slide loud">
+    <div>
+      <section>
+        <header>
+          <div class="titles">
+            <div class="title_stage">
+              The JS execution model
+            </div>
+
+            <div class="title_name">
+              Events, Run-to-Completion
+           </div>
+          </div>
+        </header>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_model_algorithm" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>How browsers work</h2>
+        </header>
+
+        <div class="left" style="font-size:20px">
+    <pre>
+      <code><span class="keyword">while</span> (<span class="constant">true</span>) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">var</span> <span class="variable-name">e</span> = waitEvent();</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">var</span> <span class="variable-name">handler</span> = js.getHandler(e);</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> (handler) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;handler.execute(e); <span class="comment-delimiter">// </span><span class="comment">Run to completion</code>
+<code></span>&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;dom.handleChanges();</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;browser.update();</code>
+<code>}</code>
+    </pre>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_model_run_to_completion" class="slide">
+    <div>
+    <section>
+      <header>
+        <h1>Run to completion</h1>
+      </header>
+
+       <div class="middle inner">
+           <ul>
+             <li class="active"><code>handler</code> is run until it completes;</li>
+             <li class="active"><emph>nothing else</emph> is executed until then;</li>
+             <li>not even refreshing the window</li>
+           </ul>
+       </div>
+     </section>
+     </div>
+  </div>
+
+  <div id="section_model_consequences_1" class="slide">
+    <div>
+    <section>
+      <header>
+        <h1>...no looping</h1>
+      </header>
+
+      <div class="middle">
+        <pre>
+<code><span class="comment-delimiter">// </span><span class="comment">Animate the image<br></span></code>
+<code><span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">i</span> = 0; i &lt; 100; ++i) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;sprite.setFrame(i);</code>
+<code>}</code></pre>
+        This won't do what you may expect.
+        </div>
+    </section>
+     </div>
+  </div>
+
+  <div id="section_model_consequences_2" class="slide">
+    <div>
+    <section>
+      <header>
+        <h1>...no waiting</h1>
+      </header>
+
+      <div class="middle">
+        <pre>
+          <code>do_something();</code>
+          <code>wait(1000);</code>
+          <code>do_something();</code>
+        </pre>
+        This won't do what you may expect.
+        </div>
+    </section>
+     </div>
+  </div>
+
+  <div id="section_model_consequences_3" class="slide">
+    <div>
+      <section>
+        <header>
+          <h1>...no advanced trickery</h1>
+       </header>
+      
+<div class="middle">
+      <ul>
+        <li>Thread join/synchronization barrier? No.</li>
+        <li>Waiting actively for an event? No.</li>
+        <li>Maybe <code>call/cc</code>? No.</li>
+        <li>Perhaps <code>getcontext</code>/<code>setcontext</code> or <code>setjmp</code>/<code>longjmp</code>? No.</li>
+      </ul>
+      </div>
+    </section>
+    </div>
+  </div>
+
+    <div id="section_model_now_what" class="slide">
+    <div>
+      <section>
+        <header>
+          <h1>Our options</h1>
+       </header>
+      <div class="middle">
+      <ul>
+        <li>Fake concurrency.</li>
+        <li>Use actual threads.</li>
+      </ul>
+      </div>
+    </section>
+    </div>
+  </div>
+
+    <div id="section_encoding_running_example" class="slide">
+    <div>
+    <section>
+      <header>
+        <h1>Running example</h1>
+      </header>
+
+      <div class="middle">
+        <pre>
+<code><span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">i</span> = 0; i &lt; width; ++i) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">j</span> = 0; j &lt; height; ++j) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> (converge(i, j)) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;drawPoint(i, j);</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>}</code>
+</pre>
+        (Assume this takes several seconds to execute)
+        </div>
+    </section>
+     </div>
+  </div>
+
+  <div id="section_encoding" class="slide loud">
+    <div>
+      <section>
+        <header>
+          <div class="titles">
+            <div class="title_stage">
+              Historical solution:
+            </div>
+
+            <div class="title_name">
+              Encoding Concurrency
+           </div>
+          </div>
+        </header>
+      </section>
+    </div>
+  </div>
+
+    <div id="section_encoding_why" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Wait, what?</h2>
+        </header>
+
+      <div class="middle">
+        Why use fake concurrency when threads are available?
+      <ol class="inner">
+        <li class="active">Fun?</li>
+        <li class="active">Profit?</li>
+        <li>Not for speed.</li>
+        <li>Not for readability.</li>
+        <li>DOM!</li>
+    </ol>
+      </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_encoding_iframe" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Put it in an iframe?</h2>
+        </header>
+
+      <ol class="middle inner">
+        <li class="active">Put the JS code in an
+        <code>&lt;iframe&gt;</code>.</li>
+        <li class="active">Put the display code in the main frame.</li>
+        <li class="active">Communicate between the main frame and the
+        iframe with <code>postMessage</code>.</li>
+        <li>...and freeze the window/browser!</li>
+      </ol>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_encoding_iterators" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Asynchronous iterators</h2>
+        </header>
+
+      <ol class="middle">
+        <li>Replace functions by stateful iterators;</li>
+        <li>Iterate asynchronously until the final result.</li>
+     </ol>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_encoding_iterators_1" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Convert to Iterators (1)</h2>
+        </header>
+
+      <div class="middle">
+        <pre style="font-size:small">
+        
+<code><span class="keyword">var</span> <span class="variable-name">outerLoop</span> = <span class="keyword">new</span> <span class="js2-external-variable">ForLoop</span>(0, <span class="js2-external-variable">width</span>);</code>
+<code>outerLoop.<span class="function-name">action</span> = <span class="keyword">function</span> <span class="function-name">action</span>(<span class="js2-function-param">i</span>) {</code>
+<code>&nbsp;&nbsp;<span class="keyword">var</span> <span class="variable-name">innerLoop</span> = <span class="keyword">new</span> <span class="js2-external-variable">ForLoop</span>(0, <span class="js2-external-variable">height</span>);</code>
+<code>&nbsp;&nbsp;innerLoop.<span class="function-name">action</span> = <span class="keyword">function</span> <span class="function-name">action</span>(<span class="js2-function-param">j</span>) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> (<span class="js2-external-variable">converge</span>(i, j)) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="js2-external-variable">drawPoint</span>(i, j);</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">throw</span> <span class="js2-external-variable">StopIteration</span>;</code>
+<code>&nbsp;&nbsp;};</code>
+<code>};</code>
+<code> </code>
+<code><span class="keyword">var</span> <span class="function-name">driver</span> = <span class="keyword">function</span>() {</code>
+<code>&nbsp;&nbsp;outerLoop.next();</code>
+<code>&nbsp;&nbsp;<span class="js2-external-variable">schedule</span>(driver);</code>
+<code>};</code>      </pre>
+      </div>
+    </section>
+    </div>
+  </div>
+
+    <div id="section_encoding_iterators_2" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Convert to Iterators (2)</h2>
+        </header>
+
+      <div class="middle">
+        <ul>
+          <li>Exercise: implement <code>ForLoop</code>.
+          <ul>
+            <li>Hint: <code>ForLoop.next</code> should be able to resume
+        where it stopped.</li>
+          </ul>
+          </li>
+          <li>Exercise: implement <code>schedule</code>.
+          <ul>
+            <li>Hint: <code>schedule</code> can use
+        <code>setTimeout</code> or <code>requestAnimationFrame</code>.</li>
+          </ul>
+          </li>
+        </ul>
+    </div>
+     </section>
+    </div>
+  </div>
+
+    <div id="section_encoding_cps" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Continuation Passing Style</h2>
+        </header>
+
+      <div class="middle">
+        <ol>
+          <li>Don't <code>return</code> anything meaningful;</li>
+          <li>Chain actions using callbacks;</li>
+          <li>Schedule these callbacks as necessary.</li>
+        </ol>
+     <ul class="inner">
+          <li class="active" style="visibility:hidden"></li>
+          <li>XMLHttpRequest;</li>
+          <li>FileReader;</li>
+          <li>IndexedDB;</li>
+          <li>...</li>
+        </ul>
+   </div>
+    </section>
+    </div>
+  </div>
+
+  <div id="section_encoding_cps_1" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Convert to CPS (1)</h2>
+        </header>
+
+      <div class="middle">
+        <pre>
+<code>forLoop(0, <span class="js2-external-variable">width</span>, <span class="keyword">function</span>(<span class="js2-function-param">i</span>, <span class="js2-function-param">cb</span>) {</code>
+<code>&nbsp;&nbsp;forLoop(0, <span class="js2-external-variable">height</span>, <span class="keyword">function</span>(<span class="js2-function-param">j</span>, <span class="js2-function-param">cb2</span>) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> (<span class="js2-external-variable">converge</span>(i, j)) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="js2-external-variable">drawPoint</span>(i, j);</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span
+        class="js2-external-variable">schedule</span>(cb2); </code>
+<code>&nbsp;&nbsp;}, cb);</code>
+<code>});</code>
+       </pre>
+      </div>
+    </section>
+    </div>
+  </div>
+
+    <div id="section_encoding_cps_2" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Convert to cps (2)</h2>
+        </header>
+
+      <div class="middle">
+        <ul>
+          <li>Exercise: implement <code>forLoop</code>.
+          <ul>
+            <li>Hint: no way to do this without some recursivity.</li>
+          </ul>
+          </li>
+          <li>Exercise: implement <code>schedule</code>.
+          <ul>
+            <li>Hint: <code>schedule</code> can use
+        <code>setTimeout</code> or <code>requestAnimationFrame</code>.</li>
+          </ul>
+          </li>
+        </ul>
+    </div>
+     </section>
+    </div>
+  </div>
+
+  <div id="section_encoding_more" class="slide">
+    <div>
+      <section>
+      <header>
+      <h2>And more...</h2>
+      </header>
+
+      <ul>
+        <li>Chain computations with events.</li>
+        <li>Cooperatively multitasked agents.</li>
+        <li>...</li>
+      </ul>
+      </section>
+    </div>
+  </div>
+
+
+  <div id="section_workers" class="slide loud">
+    <div>
+      <section>
+        <header>
+          <div class="titles">
+            <div class="title_stage">
+              Modern solution
+            </div>
+
+            <div class="title_name">
+              Web Workers
+            </div>
+          </div>
+        </header>
+      </section>
+    </div>
+  </div>
+
+ <div id="section_workers_about" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Workers 101</h2>
+        </header>
+
+       <div class="middle sum">
+          <div class="line">
+            <span class="operator">
+            </span>
+            <span class="operand">
+            One System thread
+            </span>
+          </div>
+          <div class="line">
+            <span class="operator">+</span>
+            <span class="operand">
+            One Minimal Message-Passing Interface.
+           </span>            
+          </div>
+          <div class="line result">
+            <span class="operator">=</span>
+            <span class="operand">One Web Worker</span>
+          </div>
+          </div>
+     </section>
+    </div>
+  </div>
+ 
+  <div id="section_workers_convert_1" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Going Worker: Worker code</h2>
+        </header>
+
+      <div class="middle">
+       <pre>
+<code><span class="comment-delimiter">// </span><span
+       class="comment">File MyWorker.js</code>
+<code></span>self.addEventListener(<span class="string">"message"</span>, <span class="keyword">function</span>(<span class="js2-function-param"></span>) {</code>
+<code>&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">i</span> = 0; i &lt; <span class="js2-external-variable">width</span>; ++i)</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">j</span> = 0; j &lt; <span class="js2-external-variable">height</span>; ++j)</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> (<span class="js2-external-variable">converge</span>(i, j))</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;self.postMessage({<span class="variable-name">drawPoint</span>: [i, j]});</code>
+<code>&nbsp;&nbsp;self.postMessage({<span class="variable-name">done</span>: <span class="constant">true</span>});</code>
+<code>}</code>
+        </pre>
+      </div>
+      </section>
+    </div>
+  </div>
+
+    <div id="section_workers_convert_2" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Going Worker: DOM thread code</h2>
+        </header>
+
+      <div class="middle">
+       <pre style="font-size:medium">
+<code><span class="comment-delimiter">// </span><span
+       class="comment">DOM thread code</code>
+<code><span class="keyword">var</span> <span class="variable-name">worker</span> = <span class="keyword">new</span> <span class="type">Worker</span>(<span class="string">"myWorker.js"</span>);</code>
+<code>worker.addEventListener(<span class="string">"message"</span>, <span class="keyword">function</span>(<span class="variable-name">e</span>) {</code>
+<code>&nbsp;&nbsp;<span class="keyword">if</span> (<span class="string">"drawPoint"</span> <span class="keyword">in</span> e.data) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">var</span> <span class="variable-name">point</span> = e.data.drawPoint;</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;drawPoint(point[0], point[1]);</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">return</span>;</code>
+<code>&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;<span class="keyword">if</span> (<span
+       class="string">"done"</span> <span class="keyword">in</span>
+       e.data) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment-delimiter">// </span><span class="comment">...</code>
+<code>&nbsp;&nbsp;}</code>
+        <code>});</code>
+      </pre>
+      </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_workers_remember" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Worker rules</h2>
+        </header>
+
+        <div class="middle">
+          <ul class="inner" style="list-style-type:disc">
+            <li class="active">Create a worker with <code>new
+          Worker(file)</code>.</li>
+            <li class="active">Send messages with
+          <code>postMessage</code></li>
+          <li>Receive errors and messages with events <code>error</code>/<code>message</code>.</li>
+            <li>Messages format == JSON.</li>
+            <li>Close with
+            <code>close</code>.</li>
+            <li>Workers <emph>can</emph> import scripts.</li>
+            <li>Workers <emph>can</emph> spawn workers.</li>
+         </ul>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_workers_improving_1" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Improving performance 1</h2>
+        </header>
+      <div class="middle">
+      <pre style="font-size:medium">
+<code><span class="comment-delimiter">// </span><span class="comment">Worker thread: myWorker.js</code>
+<code><span class="comment-delimiter">// </span><span
+    class="comment">v2: Exchange less messages</code>
+<code></span>self.addEventListener(<span class="string">"message"</span>, <span class="keyword">function</span>(<span class="variable-name">e</span>) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">var</span> <span class="variable-name">array</span> = [];</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">i</span> = 0; i &lt; width; ++i) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">var</span> <span class="variable-name">row</span> = [];</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;array.push(row);</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">j</span> = 0; j &lt; height; ++j) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> (converge(i, j))</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;row[j] = <span class="constant">true</span>;</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;self.postMessage(array);</code>
+<code>}</code>
+     </pre>
+      </div>
+     </section>
+    </div>
+  </div>
+
+  <div id="section_workers_improving_2" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Improving performance 2</h2>
+        </header>
+      <div class="middle">
+      <pre style="font-size:medium">
+<code><span class="comment-delimiter">// </span><span class="comment">DOM thread</code>
+<code></span><span class="comment-delimiter">// </span><span class="comment">v2: Exchange less messages</code>
+<code></span><span class="keyword">var</span> <span class="variable-name">worker</span> = <span class="keyword">new</span> <span class="type">Worker</span>(<span class="string">"myWorker.js"</span>);</code>
+<code>worker.addEventListener(<span class="string">"message"</span>, <span class="keyword">function</span>(<span class="variable-name">e</span>) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">var</span> <span class="variable-name">array</span> = e.data;</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">i</span> = 0; i &lt; array.length; ++i) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span
+    class="keyword">for</span> (<span class="keyword">var</span> <span
+    class="variable-name">j</span> = 0; j &lt; array[i].length; ++j) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> (array[i][j])</code>
+
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;drawPoint(i, j);</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>});</code>
+</pre>
+      </div>
+     </section>
+    </div>
+  </div>
+
+  <div id="section_workers_perf" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Performance considerations</h2>
+        </header>
+
+        <div class="middle">
+          <ul class="inner" style="list-style-type:disc">
+            <li class="active">Spawning a worker has a cost.</li>
+            <li class="active">Communicating has a cost ~ JSON [de]serialization.</li>
+            <li class="active">Buffering has a cost.</li>
+           <li class="active">Trade-off between
+          responsiveness and performance.</li>
+            <li>Don't send data, transfer it!</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_workers_improving_3" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Improving performance 3</h2>
+        </header>
+      <div class="middle">
+      <pre style="font-size:medium">
+<code><span class="comment-delimiter">// </span><span class="comment">Worker thread: myWorker.js</code>
+<code></span><span class="comment-delimiter">// </span><span class="comment">v3: Transfer ownership of data</code>
+<code></span>self.addEventListener(<span class="string">"message"</span>, <span class="keyword">function</span>(<span class="variable-name">e</span>) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">var</span> <span class="variable-name">array</span> = <span class="keyword">new</span> <span class="type">Uint8Array</span>(width * height);</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">i</span> = 0; i &lt; width; ++i) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">j</span> = 0; j &lt; height; ++j) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;array[i * height + j] = 1;</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment-delimiter">// </span><span class="comment">Zero-copy transfer</code>
+<code></span>&nbsp;&nbsp;&nbsp;&nbsp;self.postMessage(array.buffer, [array.buffer]);</code>
+<code>}</code>
+      </pre>
+      </div>
+     </section>
+    </div>
+  </div>
+
+  <div id="section_workers_limitations" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Can vs. Can't</h2>
+        </header>
+
+        <div class="middle">
+          <ul class="inner" style="list-style-type:disc">
+            <li class="active"><emph>No</emph> <code>join</code>.</li>
+            <li><emph>No</emph> shared state.</li>
+            <li><emph>No</emph> DOM.</li>
+            <li><emph>No</emph> passing functions or objects.</li>
+            <li><emph>No</emph> passing workers just yet.</li>            
+            <li>You can pass code, though.</li>
+            <li><a href="http://adambom.github.com/parallel.js/">Powerful monadic libraries</a>.</li>
+          </ul>
+        </div>
+        </section>
+        </div>
+        </div>
+
+  <div id="section_extensions" class="slide loud">
+    <div>
+      <section>
+        <header>
+          <div class="titles">
+            <div class="title_stage">
+              Future solutions
+            </div>
+
+            <div class="title_name">
+              Proposed extensions
+            </div>
+          </div>
+        </header>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_extensions_promise" class="slide">
+    <div>
+      <section>
+        <header>
+         <h2>Promises</h2>
+        </header>
+
+        <div class="middle">
+<pre style="font-size:medium"><code><span class="keyword">var</span> <span class="variable-name">promise</span> = asyncOperation();</code>
+<code>promise = promise.then(</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">function</span> <span class="function-name">onSuccess</span>() {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment-delimiter">// </span><span class="comment">...</code>
+<code></span>&nbsp;&nbsp;&nbsp;&nbsp;},</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">function</span> <span class="function-name">onError</span>() {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment-delimiter">// </span><span class="comment">...</code>
+<code></span>&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>);</code>
+<code>promise = promise.then(</code>
+<code>&nbsp;&nbsp;<span class="comment-delimiter">// </span><span
+          class="comment">Chain as needed</code>
+<code></span>);</code>
+</pre>
+          (Windows 8, Mozilla Platform)
+         </div>
+        </header>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_extensions_generators" class="slide">
+    <div>
+      <section>
+        <header>
+         <h2>Generators</h2>
+        </header>
+
+        <div class="middle">
+<pre style="font-size:small">
+<code><span class="keyword">var</span> <span
+          class="variable-name">draw</span> = (<span
+          class="keyword">function</span>*() { <span class="comment-delimiter">// </span><span class="comment">Generator</span></code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">i</span> = 0; i &lt; width; ++i) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">j</span> = 0; j &lt; height; ++i) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> (converge(i, j))</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span
+          class="keyword">yield</span> drawPixel(i, j); <span
+          class="comment-delimiter">// </span><span
+          class="comment">Yield control, may resume</span></code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>})();</code>
+<code></code>
+<code><span class="keyword">var</span> <span class="variable-name">driver</span> = <span class="keyword">function</span>() {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;draw.next();</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;schedule(driver);</code>
+<code>};</code>
+</pre>
+          <ul class="inner" style="margin:0">
+            <li class="active">(Mozilla Platform, Firefox
+            experimental)</li>
+            <li>Perhaps IE could implement it (hint, hint!)</li>
+            </ul>
+         </div>
+        </header>
+      </section>
+    </div>
+  </div>
+
+    <div id="section_extensions_promise_and_generators" class="slide">
+    <div>
+      <section>
+        <header>
+         <h2>Promises, Generators</h2>
+        </header>
+
+        <div class="middle">
+          <ul>
+            <li class="active">Promises
+            <ul>
+              <li class="active">improve readability;</li>
+              <li class="active">simplify synchronization;</li>
+              <li class="active">combine nicely with workers;</li>
+              <li class="active">combine nicely with existing code;</li>
+            </ul>
+            </li>
+            <li class="active">Generators
+            <ul>
+              <li class="active">considerably improve readability;</li>
+              <li class="active">combine nicely with existing code.</li>
+            </ul>
+            </li>
+           </ul>
+        </div>
+        </header>
+      </section>
+    </div>
+  </div>
+
+  <div id="section_extensions_task" class="slide">
+    <div>
+      <section>
+        <header>
+         <h2>Beautiful concurrency</h2>
+        </header>
+
+        <div class="middle">
+<pre style="font-size:small">
+<code>Task.spawn(<span class="keyword">function</span>*() {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">try</span> {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">var</span> <span class="variable-name">array</span> = <span class="keyword">yield</span> worker.waitMessage();</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">i</span> = 0; i &lt; width; ++i) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">for</span> (<span class="keyword">var</span> <span class="variable-name">j</span> = 0; j &lt; height; ++i) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">if</span> (array[i][j])</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="keyword">yield</span> drawPixel(i, j);<span class="comment-delimiter">// </span><span class="comment">Yield control, may resume</span></code>
+
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;} <span class="keyword">catch</span> (ex) {</code>
+<code>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment-delimiter">// </span><span class="comment">Handle both sync and async errors</code>
+<code></span>&nbsp;&nbsp;&nbsp;&nbsp;}</code>
+<code>}); <span class="comment-delimiter">// </span><span class="comment">Return a promise</code>
+<code></span></code>
+
+</pre>
+        </div>
+        </header>
+      </section>
+    </div>
+  </div>
+</pre>
+     </section>
+    </div>
+  </div>
+
+
+    <div id="section_summary_content" class="slide">
+    <div>
+      <section>
+        <header>
+         <h2>Summary</h2>
+        </header>
+
+        <div class="middle">
+          <ul>
+            <li>For responsiveness, main thread encoded multitasking;</li>
+            <li>For performance, off-main thread workers;</li>
+            <li>For I/O, you often need to combine both.</li>
+          </ul>
+        </div>
+        </header>
+      </section>
+    </div>
+  </div>
+
+  <div id="thanks" class="slide">
+    <div>
+      <section>
+        <header>
+          <h2>Thanks</h2>
+        </header><img src="pictures/mozillaoverview/redpanda.jpg"
+        class="right" alt="Red panda (Firefox)">
+
+        <ul>
+          <li>David Rajchenbach-Teller</li>
+
+          <li>Mozilla + Performance</li>
+
+         <li>
+            <a href="http://twitter.com/ImYoric">@ImYoric</a>
+          </li>
+
+          <li>
+            <a href=
+            "mailto:yoric@mozilla.com">yoric@mozilla.com</a>
+          </li>
+      </ul>
+      <small class="credits"><a href=
+        "http://www.flickr.com/photos/yortw/5798336827/">Photo by
+        Yortw</a></small>
+      </section>
+    </div>
+  </div>
+
+  <div id="bonus" class="slide">
+    <div>
+    <section>
+      <header>
+        <h2>Bonus!</h2>
+      </header>
+
+
+    <div class="middle">
+      <ul>
+            <li>
+              <strong>Find these slides</strong> at
+        <a href="https://github.com/Yoric/Talks-MS-IEB-2013">
+              https://github.com/Yoric/Talks-MS-IEB-2013
+            </a>
+
+             </li>
+
+            <li>
+              <strong>And fork them on github</strong>: <a href=
+            "https://github.com/Yoric/Talks-MS-IEB-2013">https://github.com/Yoric/Talks-MS-IEB-2013</a>
+            </li>
+          </ul>
+      </div>
+        <footer class="notes">
+          Say thanks, add a URL where to get the slides, and where
+          people in the audience can contact you.
+        </footer>
+
+    </section>
+    </div>
+  </div>
+  <!--
+                To hide progress bar from entire presentation
+                just remove “progress” element.
+        -->
+
+  <div class="progress"></div><script src="scripts/script.js">
+</script> 
+<!-- Copyright © 2010–2012 Vadim Makeev — pepelsbey.net -->
+</body>
+</html>
